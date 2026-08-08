@@ -103,6 +103,11 @@ jobs:
           sed -i '/^add_library(makesrna STATIC/,/SRC})/s/^/#/' $MR
           # un-comment the whole add_custom_command(...) block (multi-line)
           sed -i '/^#add_custom_command(/,/^#)$/s/^#//' $MD $MR
+          # Generators are dynamically linked against Android's /system/bin/linker64,
+          # which does not exist on this Linux runner. Statically link them so qemu
+          # can run them directly.
+          echo 'set_target_properties(makesdna PROPERTIES LINK_FLAGS "-static")' >> $MD
+          echo 'set_target_properties(makesrna PROPERTIES LINK_FLAGS "-static")' >> $MR
           echo "=== after patch ==="
           grep -n 'add_executable\|add_library\|add_custom_command' $MD $MR | head -20
 
