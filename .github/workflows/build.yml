@@ -88,6 +88,13 @@ jobs:
             sed -i 's|cpython/include/include|cpython/include/Include|g' "$f"
             echo "fixed python include join in: $f"
           done
+          # libpng in the libs repo ships its source tree but not the generated
+          # pnglibconf.h -> use the prebuilt one from scripts/
+          PNGDIR=lib-android_arm64/Png/include/libpng-1.6.40
+          if [ ! -f "$PNGDIR/pnglibconf.h" ] && [ -f "$PNGDIR/scripts/pnglibconf.h.prebuilt" ]; then
+            cp "$PNGDIR/scripts/pnglibconf.h.prebuilt" "$PNGDIR/pnglibconf.h"
+            echo "pnglibconf.h: created from prebuilt"
+          fi
 
       - name: Ensure DNA/RNA generator commands are enabled
         run: |
