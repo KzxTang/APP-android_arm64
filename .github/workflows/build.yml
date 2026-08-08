@@ -116,11 +116,15 @@ jobs:
           echo 'set_target_properties(makesdna PROPERTIES LINK_FLAGS "-static")' >> $MD
           echo 'set_target_properties(makesrna PROPERTIES LINK_FLAGS "-static")' >> $MR
           # Same issue affects every build-time tool (datatoc, datatoc_icon,
-          # smaa_areatex, msgfmt, ...). Set the global EXE linker flag at the
-          # TOP of the root CMakeLists (add_subdirectory snapshots vars by value,
-          # so appending at the end would be too late).
-          sed -i '1i set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static")' blender/CMakeLists.txt
-          head -3 blender/CMakeLists.txt
+          # smaa_areatex, msgfmt, ...). Set the global EXE linker flag AFTER
+          # project() (the NDK toolchain resets it inside project()) but BEFORE
+          # add_subdirectory (subdirs snapshot vars by value).
+          sed -i '/^project(Blender)/a set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static")' blender/CMakeLists.txt
+          grep -n 'project(Blender)\|CMAKE_EXE_LINKER_FLAGS' blender/CMakeLists.txt | head -5
+          # belt & braces: force -static on the known build-time tools
+          echo 'set_target_properties(smaa_areatex PROPERTIES LINK_FLAGS "-static")' >> blender/extern/smaa_areatex/CMakeLists.txt
+          echo 'set_target_properties(datatoc PROPERTIES LINK_FLAGS "-static")' >> blender/source/blender/datatoc/CMakeLists.txt
+          echo 'set_target_properties(datatoc_icon PROPERTIES LINK_FLAGS "-static")' >> blender/source/blender/datatoc/CMakeLists.txt
           echo "=== after patch ==="
           grep -n 'add_executable\|add_library\|add_custom_command' $MD $MR | head -20
 
