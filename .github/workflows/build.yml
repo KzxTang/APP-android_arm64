@@ -98,10 +98,11 @@ jobs:
           MD=blender/source/blender/makesdna/intern/CMakeLists.txt
           MR=blender/source/blender/makesrna/intern/CMakeLists.txt
           sed -i 's|^#add_executable(makesdna|add_executable(makesdna|' $MD
-          sed -i '/^add_library(makesdna STATIC/,/^        ${SRC})/s/^/#/' $MD
+          sed -i '/^add_library(makesdna STATIC/,/SRC})/s/^/#/' $MD
           sed -i 's|^#add_executable(makesrna|add_executable(makesrna|' $MR
-          sed -i '/^add_library(makesrna STATIC/,/^        ${SRC})/s/^/#/' $MR
-          sed -i 's|^#add_custom_command(|add_custom_command(|' $MD $MR
+          sed -i '/^add_library(makesrna STATIC/,/SRC})/s/^/#/' $MR
+          # un-comment the whole add_custom_command(...) block (multi-line)
+          sed -i '/^#add_custom_command(/,/^#)$/s/^#//' $MD $MR
           echo "=== after patch ==="
           grep -n 'add_executable\|add_library\|add_custom_command' $MD $MR | head -20
 
