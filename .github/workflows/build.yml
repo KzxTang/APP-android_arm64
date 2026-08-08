@@ -116,11 +116,11 @@ jobs:
           echo 'set_target_properties(makesdna PROPERTIES LINK_FLAGS "-static")' >> $MD
           echo 'set_target_properties(makesrna PROPERTIES LINK_FLAGS "-static")' >> $MR
           # Same issue affects every build-time tool (datatoc, datatoc_icon,
-          # msgfmt, ...). Set the global EXE linker flag in the root CMakeLists
-          # (takes effect at generate time for all executables).
-          echo '' >> blender/CMakeLists.txt
-          echo '# CI: static-link all host tools so qemu can execute them' >> blender/CMakeLists.txt
-          echo 'set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static")' >> blender/CMakeLists.txt
+          # smaa_areatex, msgfmt, ...). Set the global EXE linker flag at the
+          # TOP of the root CMakeLists (add_subdirectory snapshots vars by value,
+          # so appending at the end would be too late).
+          sed -i '1i set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static")' blender/CMakeLists.txt
+          head -3 blender/CMakeLists.txt
           echo "=== after patch ==="
           grep -n 'add_executable\|add_library\|add_custom_command' $MD $MR | head -20
 
