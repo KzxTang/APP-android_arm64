@@ -46,7 +46,14 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq qemu-user-static binfmt-support
           sudo update-binfmts --enable qemu-aarch64 || true
-          qemu-aarch64 --version | head -1
+          sudo update-binfmts --import || true
+          # verify registration, manual register as fallback
+          if [ ! -e /proc/sys/fs/binfmt_misc/qemu-aarch64 ]; then
+            echo "binfmt not registered, trying manual register"
+            echo ':qemu-aarch64:M::\x7fELF\x02\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\xa8\x00:\xff\xff\xff\xff\xff\xff\xff\x00\xff\xff\xff\xff\xff\xff\xff\xff\xfe\xff\xff\xff:/usr/bin/qemu-aarch64-static:F' | sudo tee /proc/sys/fs/binfmt_misc/register > /dev/null || echo "MANUAL REGISTER FAILED"
+          fi
+          ls /proc/sys/fs/binfmt_misc/ | grep -i qemu || echo "NO QEMU BINFMT"
+          /usr/bin/qemu-aarch64-static --version | head -1
 
       - name: Cache NDK
         id: ndk-cache
@@ -74,6 +81,13 @@ jobs:
           done
           echo "--- leftover windows refs in source tree:"
           grep -rc 'D:/FreeProjects' blender --include='*.cmake' --include='CMakeLists.txt' 2>/dev/null | grep -v ':0' | head || echo "none"
+          # author's FindPythonLibs.cmake joins cpython/include/include (wrong, the
+          # cpython here is a full source tree: Python.h lives in include/Include).
+          # Fix the join so find_package() sets a valid PYTHON_INCLUDE_DIR.
+          grep -rl 'cpython/include/include' blender --include='*.cmake' 2>/dev/null | while read f; do
+            sed -i 's|cpython/include/include|cpython/include/Include|g' "$f"
+            echo "fixed python include join in: $f"
+          done
 
       - name: Ensure DNA/RNA generator commands are enabled
         run: |
