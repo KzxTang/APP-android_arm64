@@ -62,13 +62,18 @@ jobs:
           sudo unzip -q ndk.zip -d /opt
           rm -f ndk.zip
 
-      - name: Patch hardcoded Windows paths in CMakeLists
+      - name: Patch hardcoded Windows paths (global, all cmake files)
         run: |
-          sed -i 's|D:/FreeProjects/Blender/Blender/|'$GITHUB_WORKSPACE'/|g' blender/CMakeLists.txt
-          echo "--- patched path refs:"
-          grep -c "$GITHUB_WORKSPACE" blender/CMakeLists.txt || true
-          echo "--- leftover windows refs:"
-          grep -c 'D:/FreeProjects' blender/CMakeLists.txt || true
+          # The author hard-coded D:/FreeProjects/... in the root CMakeLists AND
+          # in Find*.cmake modules (PYTHON_INCLUDE_DIR etc). Patch them all.
+          FILES=$(grep -rl 'D:/FreeProjects/Blender/Blender/' blender \
+            --include='*.cmake' --include='CMakeLists.txt' --include='*.txt' || true)
+          echo "patched files: $(echo "$FILES" | wc -l)"
+          for f in $FILES; do
+            sed -i 's|D:/FreeProjects/Blender/Blender/|'$GITHUB_WORKSPACE'/|g' "$f"
+          done
+          echo "--- leftover windows refs in source tree:"
+          grep -rc 'D:/FreeProjects' blender --include='*.cmake' --include='CMakeLists.txt' 2>/dev/null | grep -v ':0' | head || echo "none"
 
       - name: Ensure DNA/RNA generator commands are enabled
         run: |
@@ -81,13 +86,19 @@ jobs:
 
       - name: Configure with CMake + NDK toolchain
         run: |
+          # author's FindPythonLibs.cmake points at a wrong include/include path;
+          # cpython here is a full CPython source tree: Python.h lives in include/Include
+          echo "PYTHON_INCLUDE_DIR=$GITHUB_WORKSPACE/lib-android_arm64/cpython/include/Include"
           cmake -S blender -B build \
             -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_TOOLCHAIN_FILE=/opt/android-ndk-${{ env.NDK_VER }}/build/cmake/android.toolchain.cmake \
             -DANDROID_ABI=arm64-v8a \
             -DANDROID_PLATFORM=android-28 \
-            -DCMAKE_MAKE_PROGRAM=$(command -v ninja)
+            -DCMAKE_MAKE_PROGRAM=$(command -v ninja) \
+            -DPYTHON_INCLUDE_DIR=$GITHUB_WORKSPACE/lib-android_arm64/cpython/include/Include \
+            -DPYTHON_LIBRARY=$GITHUB_WORKSPACE/lib-android_arm64/cpython/lib/libcpython.so \
+            -DPYTHON_VERSION=3.11
           echo "=== configure done, targets: $(ninja -C build -t targets | wc -l)"
 
       - name: Extract BlenderLibNames target list from OBlender CMakeLists
