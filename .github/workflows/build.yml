@@ -1,0 +1,256 @@
+# ============================================================
+# Blender-on-Android CI build (Phase 0: reproduce v0.0.3 build)
+# Fork of dshawshank/APP-android_arm64 + epai's Gitea repos
+#
+# Job1: cross-compile all Blender static libs (bf_*.a) with NDK
+#       - uses qemu-user + binfmt to run arm64 DNA/RNA generators
+#         natively on the x86_64 runner (no phone hack needed)
+# Job2: link OBlender APK from libbf_*.a + prebuilt .so libs
+#
+# Trigger: manual (workflow_dispatch) or push to main
+# ============================================================
+name: Blender Android Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+env:
+  BLENDER_SRC: https://projects.blender.org/epai/Blender-android_arm64.git
+  BLENDER_BRANCH: blender-v3.6-release
+  LIB_SRC: https://projects.blender.org/epai/lib-android_arm64.git
+  NDK_VER: r21d
+  NDK_FULL: 21.4.7075529
+
+jobs:
+  build-libs:
+    name: "1/2 Cross-compile Blender libs"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout APP fork (for BlenderLibNames target list)
+        uses: actions/checkout@v4
+
+      - name: Checkout Blender source fork (shallow)
+        run: |
+          git clone --depth=1 --single-branch --branch ${{ env.BLENDER_BRANCH }} ${{ env.BLENDER_SRC }} blender
+          echo "blender source size: $(du -sh blender | cut -f1)"
+
+      - name: Checkout prebuilt third-party libs (shallow)
+        run: |
+          git clone --depth=1 ${{ env.LIB_SRC }} lib-android_arm64
+          echo "lib size: $(du -sh lib-android_arm64 | cut -f1)"
+
+      - name: Install qemu-user (run arm64 generators on x86_64)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-user-static binfmt-support
+          sudo update-binfmts --enable qemu-aarch64 || true
+          qemu-aarch64 --version | head -1
+
+      - name: Cache NDK
+        id: ndk-cache
+        uses: actions/cache@v4
+        with:
+          path: /opt/android-ndk-${{ env.NDK_VER }}
+          key: ndk-${{ env.NDK_VER }}-linux-x86_64
+
+      - name: Install NDK
+        if: steps.ndk-cache.outputs.cache-hit != 'true'
+        run: |
+          curl -fL -o ndk.zip https://dl.google.com/android/repository/android-ndk-${{ env.NDK_VER }}-linux-x86_64.zip
+          sudo unzip -q ndk.zip -d /opt
+          rm -f ndk.zip
+
+      - name: Patch hardcoded Windows paths in CMakeLists
+        run: |
+          sed -i 's|D:/FreeProjects/Blender/Blender/|'$GITHUB_WORKSPACE'/|g' blender/CMakeLists.txt
+          echo "--- patched path refs:"
+          grep -c "$GITHUB_WORKSPACE" blender/CMakeLists.txt || true
+          echo "--- leftover windows refs:"
+          grep -c 'D:/FreeProjects' blender/CMakeLists.txt || true
+
+      - name: Ensure DNA/RNA generator commands are enabled
+        run: |
+          # Author commented these out for the Windows+phone hack flow.
+          # On Linux CI we run the arm64 generators via qemu, so re-enable.
+          sed -i 's|^#\s*add_custom_command|add_custom_command|' \
+            blender/source/blender/makesdna/CMakeLists.txt \
+            blender/source/blender/makesrna/CMakeLists.txt || true
+          grep -n 'add_custom_command' blender/source/blender/makesdna/CMakeLists.txt blender/source/blender/makesrna/CMakeLists.txt | head -10
+
+      - name: Configure with CMake + NDK toolchain
+        run: |
+          cmake -S blender -B build \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE=/opt/android-ndk-${{ env.NDK_VER }}/build/cmake/android.toolchain.cmake \
+            -DANDROID_ABI=arm64-v8a \
+            -DANDROID_PLATFORM=android-28 \
+            -DCMAKE_MAKE_PROGRAM=$(command -v ninja)
+          echo "=== configure done, targets: $(ninja -C build -t targets | wc -l)"
+
+      - name: Extract BlenderLibNames target list from OBlender CMakeLists
+        id: targets
+        run: |
+          python3 - <<'EOF'
+          import re
+          txt = open('OBlender/app/src/main/cpp/CMakeLists.txt').read()
+          m = re.search(r'SET\(BlenderLibNames(.*?)\)\s*\n', txt, re.S)
+          body = m.group(1)
+          # strip comments and whitespace, keep identifiers
+          body = re.sub(r'#.*', '', body)
+          names = re.findall(r'\b(bf_[A-Za-z0-9_]+|makesdna|makesrna)\b', body)
+          seen, out = set(), []
+          for n in names:
+              if n not in seen:
+                  seen.add(n); out.append(n)
+          print('TARGETS=' + ' '.join(out))
+          print('COUNT=' + str(len(out)))
+          EOF
+
+      - name: Build all Blender static libs (j2, budget ~5h)
+        run: |
+          # load TARGETS from python output
+          TARGETS=$(python3 - <<'EOF'
+          import re
+          txt = open('OBlender/app/src/main/cpp/CMakeLists.txt').read()
+          m = re.search(r'SET\(BlenderLibNames(.*?)\)\s*\n', txt, re.S)
+          body = re.sub(r'#.*', '', m.group(1))
+          names = re.findall(r'\b(bf_[A-Za-z0-9_]+|makesdna|makesrna)\b', body)
+          seen, out = set(), []
+          for n in names:
+              if n not in seen:
+                  seen.add(n); out.append(n)
+          print(' '.join(out))
+          EOF
+          )
+          echo "targets: $(echo $TARGETS | wc -w)"
+          ninja -C build -j2 $TARGETS
+          echo "=== build done ==="
+
+      - name: Collect static libs + generated headers
+        run: |
+          ls -la build/lib/ | head -30
+          echo "lib count: $(ls build/lib/libbf_*.a 2>/dev/null | wc -l)"
+          tar czf blender-libs.tgz \
+            build/lib/libbf_*.a \
+            $(find build -name 'dna*.h' -o -name 'rna*.h' -o -name 'dna.c' -o -name 'dna_verify.c' -o -name 'rna_xr_gen.c' | head -200) 2>/dev/null || true
+          ls -lh blender-libs.tgz
+
+      - name: Upload blender static libs
+        uses: actions/upload-artifact@v4
+        with:
+          name: blender-libs
+          path: blender-libs.tgz
+          retention-days: 14
+
+  build-apk:
+    name: "2/2 Package OBlender APK"
+    needs: build-libs
+    runs-on: ubuntu-latest
+    env:
+      ANDROID_SDK_ROOT: /opt/android-sdk
+    steps:
+      - name: Checkout APP fork
+        uses: actions/checkout@v4
+
+      - name: Download blender static libs
+        uses: actions/download-artifact@v4
+        with:
+          name: blender-libs
+          path: libs-dl
+
+      - name: Clone prebuilt third-party libs (.so for jniLibs)
+        run: |
+          git clone --depth=1 ${{ env.LIB_SRC }} lib-android_arm64
+
+      - name: Setup JDK 11 (Gradle 6.5 / AGP 4.1.1 requirement)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '11'
+
+      - name: Install Android SDK (platform 30 + build-tools 30.0.3 + NDK)
+        run: |
+          mkdir -p $ANDROID_SDK_ROOT/cmdline-tools
+          curl -fL -o cmdtools.zip https://dl.google.com/android/repository/commandlinetools-linux-6609375_latest.zip
+          unzip -q cmdtools.zip -d $ANDROID_SDK_ROOT/cmdline-tools
+          mv $ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools $ANDROID_SDK_ROOT/cmdline-tools/latest
+          yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null || true
+          $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager \
+            "platforms;android-30" \
+            "build-tools;30.0.3" \
+            "platform-tools" \
+            "ndk;${{ env.NDK_FULL }}" > /dev/null
+
+      - name: Patch OBlender CMakeLists (paths + lib dir)
+        run: |
+          CM=OBlender/app/src/main/cpp/CMakeLists.txt
+          sed -i 's|D:/FreeProjects/Blender/Blender/|'$GITHUB_WORKSPACE'/|g' $CM
+          # static libs live in build/lib of the libs job -> point there
+          sed -i 's|Utilities-android_arm64/MakeBlender/app/.cxx/cmake/release/arm64-v8a/lib|'$GITHUB_WORKSPACE'/blender-libs|g' $CM
+          echo "--- patched refs:"
+          grep -n 'blender-libs\|FreeProjects' $CM | head -10
+
+      - name: Arrange libs layout
+        run: |
+          mkdir -p blender-libs
+          tar xzf libs-dl/blender-libs.tgz -C .
+          # tar contains build/lib/libbf_*.a -> move up
+          if [ -d build/lib ]; then cp build/lib/libbf_*.a blender-libs/; fi
+          ls blender-libs | wc -l
+          # .so libs -> jniLibs
+          mkdir -p OBlender/app/src/main/jniLibs/arm64-v8a
+          find lib-android_arm64 -name '*.so' -exec cp {} OBlender/app/src/main/jniLibs/arm64-v8a/ \;
+          echo "so count: $(ls OBlender/app/src/main/jniLibs/arm64-v8a/ | wc -l)"
+          # static deps (jpeg, pugixml, epoxy) referenced by absolute path
+          mkdir -p extern-static
+          for lib in JPEG/lib/libjpeg.a PugiXML/lib/libpugixml.a Epoxy/lib/libepoxy.a; do
+            find lib-android_arm64 -path "*$lib" -exec cp {} extern-static/ \;
+          done
+          ls extern-static/
+
+      - name: Patch absolute static lib paths in OBlender CMakeLists
+        run: |
+          CM=OBlender/app/src/main/cpp/CMakeLists.txt
+          sed -i 's|lib-android_arm64/JPEG/lib/libjpeg.a|'$GITHUB_WORKSPACE'/extern-static/libjpeg.a|g' $CM
+          sed -i 's|lib-android_arm64/PugiXML/lib/libpugixml.a|'$GITHUB_WORKSPACE'/extern-static/libpugixml.a|g' $CM
+          sed -i 's|lib-android_arm64/Epoxy/lib/libepoxy.a|'$GITHUB_WORKSPACE'/extern-static/libepoxy.a|g' $CM
+
+      - name: Patch Gradle (jcenter is dead -> mavenCentral)
+        run: |
+          sed -i 's|jcenter()|mavenCentral()|g' OBlender/build.gradle
+          # AGP 4.1.1 needs JDK <= 11, gradle 6.5 wrapper; ensure sdk location
+          echo "sdk.dir=$ANDROID_SDK_ROOT" > OBlender/local.properties
+          echo "ndk.dir=$ANDROID_SDK_ROOT/ndk/${{ env.NDK_FULL }}" >> OBlender/local.properties
+
+      - name: Build APK
+        run: |
+          cd OBlender
+          ./gradlew :app:assembleRelease --no-daemon --console=plain 2>&1 | tail -60
+          ls -lh app/build/outputs/apk/release/ || true
+
+      - name: Sign APK with debug key (installable)
+        run: |
+          APK=OBlender/app/build/outputs/apk/release/app-release-unsigned.apk
+          if [ -f "$APK" ]; then
+            BT=$ANDROID_SDK_ROOT/build-tools/30.0.3
+            mkdir -p ~/.android
+            keytool -genkeypair -keystore ~/.android/debug.keystore -storepass android \
+              -alias androiddebugkey -keypass android \
+              -dname "CN=Android Debug,O=Android,C=US" -keyalg RSA -validity 9999 -noprompt 2>/dev/null || true
+            $BT/zipalign -f 4 "$APK" apk-aligned.apk
+            $BT/apksigner sign --ks ~/.android/debug.keystore --ks-pass pass:android \
+              --key-pass pass:android --out blender-on-android-v0.0.3-ci.apk apk-aligned.apk
+            ls -lh blender-on-android-v0.0.3-ci.apk
+          fi
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: blender-on-android-ci
+          path: |
+            blender-on-android-v0.0.3-ci.apk
+            OBlender/app/build/outputs/apk/**/*.apk
+          retention-days: 30
