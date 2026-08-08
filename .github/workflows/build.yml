@@ -145,6 +145,27 @@ jobs:
             -DPYTHON_VERSION=3.11
           echo "=== configure done, targets: $(ninja -C build -t targets | wc -l)"
 
+      - name: Pre-generate icon outputs with host datatoc_icon
+        run: |
+          # datatoc_icon links against libpng16.so (no static lib shipped), so it
+          # cannot be statically linked. Build an x86_64 host copy instead, run the
+          # generator commands ourselves, then touch outputs so ninja skips them.
+          sudo apt-get install -y -qq libpng-dev
+          gcc -O2 -o /tmp/datatoc_icon_x86 blender/source/blender/datatoc/datatoc_icon.c -lpng -lz -lm
+          echo "host datatoc_icon built: $(file /tmp/datatoc_icon_x86 | cut -d: -f2)"
+          cd build
+          ninja -t commands 2>/dev/null | grep 'datatoc_icon' > /tmp/icon_cmds.txt || true
+          echo "icon commands: $(wc -l < /tmp/icon_cmds.txt)"
+          head -2 /tmp/icon_cmds.txt
+          while IFS= read -r line; do
+            fixed=$(echo "$line" | sed -e 's|/[^ ]*build/bin/datatoc_icon|/tmp/datatoc_icon_x86|g' -e 's|build/bin/datatoc_icon|/tmp/datatoc_icon_x86|g')
+            bash -c "$fixed" && echo "OK: $(echo $fixed | tail -c 80)" || echo "FAIL: $fixed"
+          done < /tmp/icon_cmds.txt
+          # mark outputs as up-to-date (future mtime)
+          find . -path '*datatoc*' -name '*.c' -newer /tmp/icon_cmds.txt -exec touch -d '2030-01-01' {} + 2>/dev/null || true
+          find . -name '*.c' -path '*editors*' -exec touch -d '2030-01-01' {} + 2>/dev/null || true
+          echo "=== pre-gen done ==="
+
       - name: Extract BlenderLibNames target list from OBlender CMakeLists
         id: targets
         run: |
