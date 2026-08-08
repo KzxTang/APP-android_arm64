@@ -91,12 +91,19 @@ jobs:
 
       - name: Ensure DNA/RNA generator commands are enabled
         run: |
-          # Author commented these out for the Windows+phone hack flow.
-          # On Linux CI we run the arm64 generators via qemu, so re-enable.
-          sed -i 's|^#\s*add_custom_command|add_custom_command|' \
-            blender/source/blender/makesdna/CMakeLists.txt \
-            blender/source/blender/makesrna/CMakeLists.txt || true
-          grep -n 'add_custom_command' blender/source/blender/makesdna/CMakeLists.txt blender/source/blender/makesrna/CMakeLists.txt | head -10
+          # Author commented out the generator executable + custom commands in the
+          # intern/CMakeLists.txt (Windows phone-hack flow). On Linux CI we run the
+          # arm64 generators via qemu, so restore the official flow:
+          # makesdna: add_executable + add_custom_command (comment out STATIC lib twin)
+          MD=blender/source/blender/makesdna/intern/CMakeLists.txt
+          MR=blender/source/blender/makesrna/intern/CMakeLists.txt
+          sed -i 's|^#add_executable(makesdna|add_executable(makesdna|' $MD
+          sed -i '/^add_library(makesdna STATIC/,/^        ${SRC})/s/^/#/' $MD
+          sed -i 's|^#add_executable(makesrna|add_executable(makesrna|' $MR
+          sed -i '/^add_library(makesrna STATIC/,/^        ${SRC})/s/^/#/' $MR
+          sed -i 's|^#add_custom_command(|add_custom_command(|' $MD $MR
+          echo "=== after patch ==="
+          grep -n 'add_executable\|add_library\|add_custom_command' $MD $MR | head -20
 
       - name: Configure with CMake + NDK toolchain
         run: |
