@@ -342,6 +342,11 @@ jobs:
         run: |
           cd OBlender
           chmod +x gradlew
+          # repo ships gradle-wrapper.properties but not gradle-wrapper.jar
+          mkdir -p gradle/wrapper
+          curl -fL -o gradle/wrapper/gradle-wrapper.jar \
+            https://github.com/gradle/gradle/raw/v6.5.0/gradle/wrapper/gradle-wrapper.jar
+          ls -la gradle/wrapper/
           ./gradlew :app:assembleRelease --no-daemon --console=plain > gradle.log 2>&1 || { echo "=== GRADLE FAILED (last 80 lines): ==="; tail -80 gradle.log; exit 1; }
           tail -20 gradle.log
           ls -lh app/build/outputs/apk/release/ || true
