@@ -81,6 +81,29 @@ jobs:
           done
           echo "--- leftover windows refs in source tree:"
           grep -rc 'D:/FreeProjects' blender --include='*.cmake' --include='CMakeLists.txt' 2>/dev/null | grep -v ':0' | head || echo "none"
+          # FindOpenCOLLADA.cmake uses a SECOND windows prefix with backslashes:
+          #   F:\\FreeProjects\\android\\OpenCOLLADA-main\\COLLADABaseUtils\\include\\
+          # -> rewrite to the libs checkout (lib-android_arm64/OpenCOLLADA/include/).
+          python3 - <<'EOF'
+          import os
+          ws = os.environ['GITHUB_WORKSPACE']
+          pat = 'F:\\\\FreeProjects\\\\android\\\\'
+          repl = ws + '/lib-android_arm64/OpenCOLLADA/include/'
+          total = 0
+          for root, dirs, fs in os.walk('blender'):
+              if '/.git' in root:
+                  continue
+              for f in fs:
+                  if f.endswith('.cmake') or f == 'CMakeLists.txt':
+                      p = os.path.join(root, f)
+                      txt = open(p, encoding='utf-8', errors='replace').read()
+                      n = txt.count(pat)
+                      if n:
+                          open(p, 'w', encoding='utf-8').write(txt.replace(pat, repl))
+                          print('fixed', p, n)
+                          total += n
+          print('total F: refs fixed:', total)
+          EOF
           # author's FindPythonLibs.cmake joins cpython/include/include (wrong, the
           # cpython here is a full source tree: Python.h lives in include/Include).
           # Fix the join so find_package() sets a valid PYTHON_INCLUDE_DIR.
