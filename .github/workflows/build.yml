@@ -260,7 +260,7 @@ jobs:
     needs: build-libs
     runs-on: ubuntu-latest
     env:
-      ANDROID_SDK_ROOT: /opt/android-sdk
+      ANDROID_SDK_ROOT: ${{ runner.home }}/android-sdk
     steps:
       - name: Checkout APP fork
         uses: actions/checkout@v4
@@ -283,6 +283,7 @@ jobs:
 
       - name: Install Android SDK (platform 30 + build-tools 30.0.3 + NDK)
         run: |
+          # /opt is root-owned on runners; install the SDK into the user dir.
           mkdir -p $ANDROID_SDK_ROOT/cmdline-tools
           curl -fL -o cmdtools.zip https://dl.google.com/android/repository/commandlinetools-linux-6609375_latest.zip
           unzip -q cmdtools.zip -d $ANDROID_SDK_ROOT/cmdline-tools
@@ -293,6 +294,7 @@ jobs:
             "build-tools;30.0.3" \
             "platform-tools" \
             "ndk;${{ env.NDK_FULL }}" > /dev/null
+          ls $ANDROID_SDK_ROOT
 
       - name: Patch OBlender CMakeLists (paths + lib dir)
         run: |
