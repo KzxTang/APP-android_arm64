@@ -98,6 +98,8 @@ jobs:
           # datatoc_icon links against libpng16.so / libzlib.so which cannot be
           # statically linked; build static zlib + libpng with the NDK and point
           # datatoc_icon at them instead, so it links + runs under qemu natively.
+          # NOTE: Png/include/libpng-1.6.40 in the libs repo is headers-only
+          # (no png.c) -> use the official libpng source tarball.
           curl -fL -o zlib.tar.gz https://github.com/madler/zlib/archive/refs/tags/v1.2.13.tar.gz
           tar xzf zlib.tar.gz
           cmake -S zlib-1.2.13 -B zbuild -G Ninja \
@@ -106,7 +108,9 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release
           ninja -C zbuild zlibstatic || { echo "ZLIB STATIC BUILD FAILED"; exit 1; }
           ls -la zbuild/libz.a
-          cmake -S $PNGDIR -B pbuild -G Ninja \
+          curl -fL -o libpng.tar.gz https://github.com/pnggroup/libpng/archive/refs/tags/v1.6.40.tar.gz
+          tar xzf libpng.tar.gz
+          cmake -S libpng-1.6.40 -B pbuild -G Ninja \
             -DCMAKE_TOOLCHAIN_FILE=/opt/android-ndk-${{ env.NDK_VER }}/build/cmake/android.toolchain.cmake \
             -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-28 \
             -DCMAKE_BUILD_TYPE=Release \
