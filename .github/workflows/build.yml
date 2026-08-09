@@ -152,7 +152,9 @@ jobs:
           # its generator commands (they emit .png), then touch outputs so ninja
           # skips them. datatoc itself is statically linked + runs fine under qemu.
           sudo apt-get install -y -qq libpng-dev
-          gcc -O2 -o /tmp/datatoc_icon_x86 blender/source/blender/datatoc/datatoc_icon.c -lpng -lz -lm || { echo "HOST BUILD FAILED"; exit 1; }
+          # must define __LITTLE_ENDIAN__ (same as CMake cross build), otherwise
+          # icon .dat headers are endian-swapped and merge asserts
+          gcc -O2 -D__LITTLE_ENDIAN__ -o /tmp/datatoc_icon_x86 blender/source/blender/datatoc/datatoc_icon.c -lpng -lz -lm || { echo "HOST BUILD FAILED"; exit 1; }
           file /tmp/datatoc_icon_x86 | cut -d: -f2
           cd build
           # generator commands: contain 'datatoc_icon' but NOT 'clang'
