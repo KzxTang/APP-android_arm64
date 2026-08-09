@@ -277,6 +277,11 @@ jobs:
         run: |
           git clone --depth=1 ${{ env.LIB_SRC }} lib-android_arm64
 
+      - name: Checkout Blender source fork (headers for native build)
+        run: |
+          git clone --depth=1 --single-branch --branch ${{ env.BLENDER_BRANCH }} ${{ env.BLENDER_SRC }} Blender-android_arm64
+          echo "blender source size: $(du -sh Blender-android_arm64 | cut -f1)"
+
       - name: Setup JDK 11 (Gradle 6.5 / AGP 4.1.1 requirement)
         uses: actions/setup-java@v4
         with:
@@ -301,10 +306,18 @@ jobs:
         run: |
           CM=OBlender/app/src/main/cpp/CMakeLists.txt
           sed -i 's|D:/FreeProjects/Blender/Blender/|'$GITHUB_WORKSPACE'/|g' $CM
-          # static libs live in build/lib of the libs job -> point there
+          # static libs live in build/lib of the libs job -> point there.
+          # The original path may be absolute (already rewritten to
+          # $GITHUB_WORKSPACE/Utilities-...) or relative (Utilities-...),
+          # handle both to avoid a duplicated $GITHUB_WORKSPACE prefix.
+          sed -i 's|'$GITHUB_WORKSPACE'/Utilities-android_arm64/MakeBlender/app/.cxx/cmake/release/arm64-v8a/lib|'$GITHUB_WORKSPACE'/blender-libs|g' $CM
           sed -i 's|Utilities-android_arm64/MakeBlender/app/.cxx/cmake/release/arm64-v8a/lib|'$GITHUB_WORKSPACE'/blender-libs|g' $CM
+          # generated headers dir (dna/rna) - original points at the Windows
+          # .cxx/.../source/creator; rewrite to the collected gen dir.
+          sed -i 's|'$GITHUB_WORKSPACE'/Utilities-android_arm64/MakeBlender/app/.cxx/cmake/release/arm64-v8a/source/creator|'$GITHUB_WORKSPACE'/blender-libs-gen|g' $CM
+          sed -i 's|Utilities-android_arm64/MakeBlender/app/.cxx/cmake/release/arm64-v8a/source/creator|'$GITHUB_WORKSPACE'/blender-libs-gen|g' $CM
           echo "--- patched refs:"
-          grep -n 'blender-libs\|FreeProjects' $CM | head -10
+          grep -n 'blender-libs\|FreeProjects' $CM | head -12
 
       - name: Arrange libs layout
         run: |
@@ -313,6 +326,13 @@ jobs:
           # tar contains build/lib/libbf_*.a -> move up
           if [ -d build/lib ]; then cp build/lib/libbf_*.a blender-libs/; fi
           ls blender-libs | wc -l
+          # generated headers (dna/rna) -> single include dir the CMakeLists points at
+          mkdir -p blender-libs-gen
+          find build -name 'dna*.h' -o -name 'rna*.h' -o -name 'dna.c' -o -name 'dna_verify.c' -o -name 'rna_xr_gen.c' 2>/dev/null | while read f; do
+            cp "$f" blender-libs-gen/
+          done
+          echo "gen files: $(ls blender-libs-gen | wc -l)"
+          ls blender-libs-gen | head -20
           # .so libs -> jniLibs
           mkdir -p OBlender/app/src/main/jniLibs/arm64-v8a
           find lib-android_arm64 -name '*.so' -exec cp {} OBlender/app/src/main/jniLibs/arm64-v8a/ \;
