@@ -151,24 +151,29 @@ jobs:
           # cannot be statically linked. Build an x86_64 host copy instead, run the
           # generator commands ourselves, then touch outputs so ninja skips them.
           sudo apt-get install -y -qq libpng-dev
-          gcc -O2 -o /tmp/datatoc_icon_x86 blender/source/blender/datatoc/datatoc_icon.c -lpng -lz -lm
-          echo "host datatoc_icon built: $(file /tmp/datatoc_icon_x86 | cut -d: -f2)"
+          gcc -O2 -o /tmp/datatoc_icon_x86 blender/source/blender/datatoc/datatoc_icon.c -lpng -lz -lm || { echo "HOST BUILD FAILED"; exit 1; }
+          file /tmp/datatoc_icon_x86 | cut -d: -f2
           cd build
-          ninja -t commands 2>/dev/null | grep 'datatoc_icon' > /tmp/icon_cmds.txt || true
-          echo "icon commands: $(wc -l < /tmp/icon_cmds.txt)"
+          # only the GENERATOR commands (they emit .c outputs); the link rule
+          # (clang ... -o bin/datatoc_icon) must NOT be run
+          ninja -t commands 2>&1 | grep -E 'datatoc_icon.*\.c' > /tmp/icon_cmds.txt || true
+          echo "ICON_CMDS=$(wc -l < /tmp/icon_cmds.txt)"
+          if [ ! -s /tmp/icon_cmds.txt ]; then echo "NO ICON CMDS FOUND"; exit 1; fi
           head -2 /tmp/icon_cmds.txt
           while IFS= read -r line; do
             fixed=$(echo "$line" | sed -e 's|/[^ ]*build/bin/datatoc_icon|/tmp/datatoc_icon_x86|g' -e 's|build/bin/datatoc_icon|/tmp/datatoc_icon_x86|g')
-            bash -c "$fixed" && echo "OK: $(echo $fixed | tail -c 80)" || echo "FAIL: $fixed"
+            echo "GEN: $(echo "$fixed" | tail -c 100)"
+            bash -c "$fixed" || { echo "GEN FAILED: $fixed"; exit 1; }
           done < /tmp/icon_cmds.txt
-          # mark outputs as up-to-date (future mtime)
-          find . -path '*datatoc*' -name '*.c' -newer /tmp/icon_cmds.txt -exec touch -d '2030-01-01' {} + 2>/dev/null || true
+          # mark generated outputs up-to-date (future mtime)
           find . -name '*.c' -path '*editors*' -exec touch -d '2030-01-01' {} + 2>/dev/null || true
+          find . -name 'datatoc*.c' -exec touch -d '2030-01-01' {} + 2>/dev/null || true
           # CMake's $<TARGET_FILE:datatoc_icon> adds a link dependency on the exe;
-          # plant a future-mtime placeholder so ninja skips the link rule too
-          mkdir -p build/bin
-          touch -d '2030-01-01' build/bin/datatoc_icon
-          echo "=== pre-gen done ==="
+          # plant a future-mtime placeholder so ninja skips the link rule
+          # (NOTE: we are already inside build/, so path is bin/, not build/bin/)
+          mkdir -p bin
+          touch -d '2030-01-01' bin/datatoc_icon
+          echo "PREGEN_OK"
 
       - name: Extract BlenderLibNames target list from OBlender CMakeLists
         id: targets
