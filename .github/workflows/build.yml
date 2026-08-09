@@ -95,6 +95,29 @@ jobs:
             cp "$PNGDIR/scripts/pnglibconf.h.prebuilt" "$PNGDIR/pnglibconf.h"
             echo "pnglibconf.h: created from prebuilt"
           fi
+          # datatoc_icon links against libpng16.so / libzlib.so which cannot be
+          # statically linked; build static zlib + libpng with the NDK and point
+          # datatoc_icon at them instead, so it links + runs under qemu natively.
+          curl -fL -o zlib.tar.gz https://github.com/madler/zlib/archive/refs/tags/v1.2.13.tar.gz
+          tar xzf zlib.tar.gz
+          cmake -S zlib-1.2.13 -B zbuild -G Ninja \
+            -DCMAKE_TOOLCHAIN_FILE=/opt/android-ndk-${{ env.NDK_VER }}/build/cmake/android.toolchain.cmake \
+            -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-28 \
+            -DCMAKE_BUILD_TYPE=Release
+          ninja -C zbuild zlibstatic || { echo "ZLIB STATIC BUILD FAILED"; exit 1; }
+          ls -la zbuild/libz.a
+          cmake -S $PNGDIR -B pbuild -G Ninja \
+            -DCMAKE_TOOLCHAIN_FILE=/opt/android-ndk-${{ env.NDK_VER }}/build/cmake/android.toolchain.cmake \
+            -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-28 \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DPNG_SHARED=OFF -DPNG_STATIC=ON -DPNG_TESTS=OFF -DPNG_TOOLS=OFF \
+            -DZLIB_LIBRARY=$GITHUB_WORKSPACE/zbuild/libz.a \
+            -DZLIB_INCLUDE_DIR=$GITHUB_WORKSPACE/zlib-1.2.13
+          ninja -C pbuild png_static || { echo "LIBPNG STATIC BUILD FAILED"; exit 1; }
+          ls -la pbuild/libpng.a
+          sed -i "s|target_link_libraries(datatoc_icon \${PNG_LIBRARIES} \${ZLIB_LIBRARIES})|target_link_libraries(datatoc_icon $GITHUB_WORKSPACE/pbuild/libpng.a $GITHUB_WORKSPACE/zbuild/libz.a)|" \
+            blender/source/blender/datatoc/CMakeLists.txt
+          grep -n 'target_link_libraries(datatoc_icon' blender/source/blender/datatoc/CMakeLists.txt
 
       - name: Ensure DNA/RNA generator commands are enabled
         run: |
@@ -144,43 +167,6 @@ jobs:
             -DPYTHON_LIBRARY=$GITHUB_WORKSPACE/lib-android_arm64/cpython/lib/libcpython.so \
             -DPYTHON_VERSION=3.11
           echo "=== configure done, targets: $(ninja -C build -t targets | wc -l)"
-
-      - name: Pre-generate icon outputs with host datatoc_icon
-        run: |
-          # datatoc_icon links against libpng16.so (no static lib shipped), so it
-          # cannot be statically linked. Build an x86_64 host copy instead, run ONLY
-          # its generator commands (they emit .png), then touch outputs so ninja
-          # skips them. datatoc itself is statically linked + runs fine under qemu.
-          sudo apt-get install -y -qq libpng-dev
-          # must define __LITTLE_ENDIAN__ (same as CMake cross build), otherwise
-          # icon .dat headers are endian-swapped and merge asserts
-          gcc -O2 -D__LITTLE_ENDIAN__ -o /tmp/datatoc_icon_x86 blender/source/blender/datatoc/datatoc_icon.c -lpng -lz -lm || { echo "HOST BUILD FAILED"; exit 1; }
-          file /tmp/datatoc_icon_x86 | cut -d: -f2
-          cd build
-          # datatoc (png->c) is statically linked and runs under qemu; build it
-          # now because the generator commands chain it right after datatoc_icon
-          ninja -j2 bin/datatoc || { echo "DATATOC BUILD FAILED"; exit 1; }
-          echo "datatoc built: $(ls -la bin/datatoc | awk '{print $5}') bytes"
-          # generator commands: contain 'datatoc_icon' but NOT 'clang'
-          # (compile/link rules all invoke clang)
-          ninja -t commands 2>&1 | grep 'datatoc_icon' | grep -v 'clang' > /tmp/icon_cmds.txt || true
-          echo "ICON_CMDS=$(wc -l < /tmp/icon_cmds.txt)"
-          if [ ! -s /tmp/icon_cmds.txt ]; then echo "NO ICON CMDS FOUND"; exit 1; fi
-          head -2 /tmp/icon_cmds.txt
-          while IFS= read -r line; do
-            fixed=$(echo "$line" | sed -e 's|/[^ ]*bin/datatoc_icon|/tmp/datatoc_icon_x86|g' -e 's|bin/datatoc_icon|/tmp/datatoc_icon_x86|g')
-            echo "GEN: $(echo "$fixed" | tail -c 100)"
-            bash -c "$fixed" || { echo "GEN FAILED: $fixed"; exit 1; }
-          done < /tmp/icon_cmds.txt
-          # generated .png outputs -> future mtime so ninja skips the rules
-          find . -name '*.png' -newer /tmp/icon_cmds.txt -exec touch -d '2030-01-01' {} + 2>/dev/null || true
-          find . -name '*.png' -path '*editors*' -exec touch -d '2030-01-01' {} + 2>/dev/null || true
-          # CMake's $<TARGET_FILE:datatoc_icon> adds a link dependency on the exe;
-          # plant a future-mtime placeholder so ninja skips the link rule
-          # (NOTE: we are already inside build/, so path is bin/, not build/bin/)
-          mkdir -p bin
-          touch -d '2030-01-01' bin/datatoc_icon
-          echo "PREGEN_OK"
 
       - name: Extract BlenderLibNames target list from OBlender CMakeLists
         id: targets
