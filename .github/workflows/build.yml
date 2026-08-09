@@ -341,7 +341,9 @@ jobs:
       - name: Build APK
         run: |
           cd OBlender
-          ./gradlew :app:assembleRelease --no-daemon --console=plain 2>&1 | tail -60
+          chmod +x gradlew
+          ./gradlew :app:assembleRelease --no-daemon --console=plain > gradle.log 2>&1 || { echo "=== GRADLE FAILED (last 80 lines): ==="; tail -80 gradle.log; exit 1; }
+          tail -20 gradle.log
           ls -lh app/build/outputs/apk/release/ || true
 
       - name: Sign APK with debug key (installable)
