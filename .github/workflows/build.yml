@@ -157,6 +157,10 @@ jobs:
           gcc -O2 -D__LITTLE_ENDIAN__ -o /tmp/datatoc_icon_x86 blender/source/blender/datatoc/datatoc_icon.c -lpng -lz -lm || { echo "HOST BUILD FAILED"; exit 1; }
           file /tmp/datatoc_icon_x86 | cut -d: -f2
           cd build
+          # datatoc (png->c) is statically linked and runs under qemu; build it
+          # now because the generator commands chain it right after datatoc_icon
+          ninja -j2 bin/datatoc || { echo "DATATOC BUILD FAILED"; exit 1; }
+          echo "datatoc built: $(ls -la bin/datatoc | awk '{print $5}') bytes"
           # generator commands: contain 'datatoc_icon' but NOT 'clang'
           # (compile/link rules all invoke clang)
           ninja -t commands 2>&1 | grep 'datatoc_icon' | grep -v 'clang' > /tmp/icon_cmds.txt || true
