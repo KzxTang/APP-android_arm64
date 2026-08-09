@@ -164,6 +164,10 @@ jobs:
           # mark outputs as up-to-date (future mtime)
           find . -path '*datatoc*' -name '*.c' -newer /tmp/icon_cmds.txt -exec touch -d '2030-01-01' {} + 2>/dev/null || true
           find . -name '*.c' -path '*editors*' -exec touch -d '2030-01-01' {} + 2>/dev/null || true
+          # CMake's $<TARGET_FILE:datatoc_icon> adds a link dependency on the exe;
+          # plant a future-mtime placeholder so ninja skips the link rule too
+          mkdir -p build/bin
+          touch -d '2030-01-01' build/bin/datatoc_icon
           echo "=== pre-gen done ==="
 
       - name: Extract BlenderLibNames target list from OBlender CMakeLists
