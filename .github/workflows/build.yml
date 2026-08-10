@@ -242,9 +242,9 @@ jobs:
       - name: Collect static libs + generated headers
         run: |
           ls -la build/lib/ | head -30
-          echo "lib count: $(ls build/lib/libbf_*.a 2>/dev/null | wc -l)"
+          echo "lib count: $(ls build/lib/*.a 2>/dev/null | wc -l)"
           tar czf blender-libs.tgz \
-            build/lib/libbf_*.a \
+            build/lib/*.a \
             $(find build -name 'dna*.h' -o -name 'rna*.h' -o -name 'dna.c' -o -name 'dna_verify.c' -o -name 'rna_xr_gen.c' | head -200) 2>/dev/null || true
           ls -lh blender-libs.tgz
 
@@ -327,9 +327,9 @@ jobs:
         run: |
           mkdir -p blender-libs
           tar xzf libs-dl/blender-libs.tgz -C .
-          # tar contains build/lib/libbf_*.a -> move up
-          if [ -d build/lib ]; then cp build/lib/libbf_*.a blender-libs/; fi
-          ls blender-libs | wc -l
+          # tar contains build/lib/*.a -> move up
+          if [ -d build/lib ]; then cp build/lib/*.a blender-libs/; fi
+          echo "a count: $(ls blender-libs/*.a 2>/dev/null | wc -l)"
           # generated headers (dna/rna) -> single include dir the CMakeLists points at
           mkdir -p blender-libs-gen
           find build -name 'dna*.h' -o -name 'rna*.h' -o -name 'dna.c' -o -name 'dna_verify.c' -o -name 'rna_xr_gen.c' 2>/dev/null | while read f; do
