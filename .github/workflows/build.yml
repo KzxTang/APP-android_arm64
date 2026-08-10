@@ -316,8 +316,12 @@ jobs:
           # .cxx/.../source/creator; rewrite to the collected gen dir.
           sed -i 's|'$GITHUB_WORKSPACE'/Utilities-android_arm64/MakeBlender/app/.cxx/cmake/release/arm64-v8a/source/creator|'$GITHUB_WORKSPACE'/blender-libs-gen|g' $CM
           sed -i 's|Utilities-android_arm64/MakeBlender/app/.cxx/cmake/release/arm64-v8a/source/creator|'$GITHUB_WORKSPACE'/blender-libs-gen|g' $CM
+          # makesdna/makesrna are build-time generators in our qemu flow (executables,
+          # no libmakesdna.a produced); their output is already inside
+          # libbf_dna.a / libbf_rna.a, so drop them from the link list.
+          sed -i '/^[[:space:]]*makesdna[[:space:]]*$/d; /^[[:space:]]*makesrna[[:space:]]*$/d' $CM
           echo "--- patched refs:"
-          grep -n 'blender-libs\|FreeProjects' $CM | head -12
+          grep -n 'blender-libs\|FreeProjects\|makesdna\|makesrna' $CM | head -14
 
       - name: Arrange libs layout
         run: |
