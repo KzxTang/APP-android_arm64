@@ -210,7 +210,7 @@ jobs:
           body = m.group(1)
           # strip comments and whitespace, keep identifiers
           body = re.sub(r'#.*', '', body)
-          names = re.findall(r'\b(bf_[A-Za-z0-9_]+|makesdna|makesrna)\b', body)
+          names = re.findall(r'\b(bf_[A-Za-z0-9_]+|extern_[A-Za-z0-9_]+|makesdna|makesrna)\b', body)
           seen, out = set(), []
           for n in names:
               if n not in seen:
@@ -227,7 +227,7 @@ jobs:
           txt = open('OBlender/app/src/main/cpp/CMakeLists.txt').read()
           m = re.search(r'SET\(BlenderLibNames(.*?)\)\s*\n', txt, re.S)
           body = re.sub(r'#.*', '', m.group(1))
-          names = re.findall(r'\b(bf_[A-Za-z0-9_]+|makesdna|makesrna)\b', body)
+          names = re.findall(r'\b(bf_[A-Za-z0-9_]+|extern_[A-Za-z0-9_]+|makesdna|makesrna)\b', body)
           seen, out = set(), []
           for n in names:
               if n not in seen:
