@@ -351,9 +351,15 @@ jobs:
       - name: Patch absolute static lib paths in OBlender CMakeLists
         run: |
           CM=OBlender/app/src/main/cpp/CMakeLists.txt
+          # The Windows prefix was already rewritten to $GITHUB_WORKSPACE by the
+          # earlier sed -> handle both forms to avoid a duplicated prefix.
+          sed -i 's|'$GITHUB_WORKSPACE'/lib-android_arm64/JPEG/lib/libjpeg.a|'$GITHUB_WORKSPACE'/extern-static/libjpeg.a|g' $CM
           sed -i 's|lib-android_arm64/JPEG/lib/libjpeg.a|'$GITHUB_WORKSPACE'/extern-static/libjpeg.a|g' $CM
+          sed -i 's|'$GITHUB_WORKSPACE'/lib-android_arm64/PugiXML/lib/libpugixml.a|'$GITHUB_WORKSPACE'/extern-static/libpugixml.a|g' $CM
           sed -i 's|lib-android_arm64/PugiXML/lib/libpugixml.a|'$GITHUB_WORKSPACE'/extern-static/libpugixml.a|g' $CM
+          sed -i 's|'$GITHUB_WORKSPACE'/lib-android_arm64/Epoxy/lib/libepoxy.a|'$GITHUB_WORKSPACE'/extern-static/libepoxy.a|g' $CM
           sed -i 's|lib-android_arm64/Epoxy/lib/libepoxy.a|'$GITHUB_WORKSPACE'/extern-static/libepoxy.a|g' $CM
+          grep -n 'extern-static' $CM | head -8
 
       - name: Patch Gradle (jcenter is dead -> mavenCentral)
         run: |
