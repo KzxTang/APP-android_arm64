@@ -377,7 +377,7 @@ jobs:
           curl -fL -o gradle/wrapper/gradle-wrapper.jar \
             https://github.com/gradle/gradle/raw/v6.5.0/gradle/wrapper/gradle-wrapper.jar
           ls -la gradle/wrapper/
-          ./gradlew :app:assembleRelease --no-daemon --console=plain > gradle.log 2>&1 || { echo "=== GRADLE FAILED (last 80 lines): ==="; tail -80 gradle.log; exit 1; }
+          ./gradlew :app:assembleRelease --no-daemon --console=plain > gradle.log 2>&1 || { echo "=== GRADLE FAILED (filtered): ==="; grep -vE 'warning:|note:|expanded from|In file included|In file from|^ *\^|__thiscall' gradle.log | tail -150; exit 1; }
           tail -20 gradle.log
           ls -lh app/build/outputs/apk/release/ || true
 
