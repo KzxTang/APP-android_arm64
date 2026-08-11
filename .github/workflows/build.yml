@@ -245,7 +245,7 @@ jobs:
           echo "lib count: $(ls build/lib/*.a 2>/dev/null | wc -l)"
           tar czf blender-libs.tgz \
             build/lib/*.a \
-            $(find build -name 'dna*.h' -o -name 'rna*.h' -o -name 'dna.c' -o -name 'dna_verify.c' -o -name 'rna_xr_gen.c' | head -200) 2>/dev/null || true
+            $(find build -name 'dna*.h' -o -name 'rna*.h' -o -name 'dna.c' -o -name 'dna_verify.c' -o -name 'rna_xr_gen.c' -o -name 'buildinfo.h' | head -200) 2>/dev/null || true
           ls -lh blender-libs.tgz
 
       - name: Upload blender static libs
@@ -332,7 +332,7 @@ jobs:
           echo "a count: $(ls blender-libs/*.a 2>/dev/null | wc -l)"
           # generated headers (dna/rna) -> single include dir the CMakeLists points at
           mkdir -p blender-libs-gen
-          find build -name 'dna*.h' -o -name 'rna*.h' -o -name 'dna.c' -o -name 'dna_verify.c' -o -name 'rna_xr_gen.c' 2>/dev/null | while read f; do
+          find build -name 'dna*.h' -o -name 'rna*.h' -o -name 'dna.c' -o -name 'dna_verify.c' -o -name 'rna_xr_gen.c' -o -name 'buildinfo.h' 2>/dev/null | while read f; do
             cp "$f" blender-libs-gen/
           done
           echo "gen files: $(ls blender-libs-gen | wc -l)"
