@@ -340,18 +340,18 @@ jobs:
           # OBlender forces WITH_BUILDINFO_HEADER but the Blender build does not
           # generate buildinfo.h (WITH_BUILDINFO off) -> provide one.
           cat > blender-libs-gen/buildinfo.h <<'HDR'
-#define BUILD_DATE "2026-08-11"
-#define BUILD_TIME "00:00:00"
-#define BUILD_HASH "unknown"
-#define BUILD_COMMIT_TIMESTAMP 0
-#define BUILD_BRANCH "main"
-#define BUILD_PLATFORM "Android"
-#define BUILD_TYPE "Release"
-#define BUILD_CFLAGS ""
-#define BUILD_CXXFLAGS ""
-#define BUILD_LINKFLAGS ""
-#define BUILD_SYSTEM "GCC"
-HDR
+          #define BUILD_DATE "2026-08-11"
+          #define BUILD_TIME "00:00:00"
+          #define BUILD_HASH "unknown"
+          #define BUILD_COMMIT_TIMESTAMP 0
+          #define BUILD_BRANCH "main"
+          #define BUILD_PLATFORM "Android"
+          #define BUILD_TYPE "Release"
+          #define BUILD_CFLAGS ""
+          #define BUILD_CXXFLAGS ""
+          #define BUILD_LINKFLAGS ""
+          #define BUILD_SYSTEM "GCC"
+          HDR
           ls -la blender-libs-gen/buildinfo.h
           # .so libs -> jniLibs
           mkdir -p OBlender/app/src/main/jniLibs/arm64-v8a
